@@ -1,5 +1,8 @@
 #!/bin/bash
 
+## action
+ACTION=sync ## sync/start/stop. `sync` only creates files/folders. `start` do the sync and start the service.
+
 ## mongos
 MONGOS_NUMBER=2
 
@@ -113,7 +116,12 @@ ENABLE_AUTH=false ## true/false
 ## Service config
 USER_MONGODB=mongodb
 
+## Create keyfile
+mkdir -p target
+openssl rand -base64 756 > target/keyfile
+
 ## mongos
+mkdir -p target/mongos
 for ((i = 0; i < $MONGOS_NUMBER; i++));
 do
   echo "Generating file for mongos$i"
@@ -137,13 +145,15 @@ do
   sed "s~%%MONGOS_HOST%%~${!mongos_host}~g" | \
   sed "s~%%MONGOS_PORT%%~${!mongos_port}~g" | \
   sed "s~%%CONFSVR_REPL_NAME%%~$CONFSVR_REPL_NAME~g" | \
-  sed "s~%%CONFSVR_REPL_PRIMARY%%~$CONFSVR_REPL_PRIMARY~g" > target/mongos/${!mongos_conf_file}
+  sed "s~%%CONFSVR_REPL_PRIMARY%%~$CONFSVR_REPL_PRIMARY~g" | \
+  sed "s~%%MONGOS_PID%%~${!mongos_path}/mongos.pid~g" > target/mongos/${!mongos_conf_file}
 
   rsync -aurv target/mongos/${!mongos_conf_file} ${!mongos_ssh}:${!mongos_path}
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_path}"
 done
 
 ## Config SVR
+mkdir -p target/confsvr
 for ((i = 0; i < $CONFSVR_REPL; i++));
 do
   echo "----------"
@@ -160,19 +170,27 @@ do
 
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_log_path%/*} && sudo touch ${!confsvr_repl_log_path}"
+  ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_db_path}"
 
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_log_path%/*} ${!confsvr_repl_log_path}"
+  ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_db_path}"
 
   cat template/mongod.conf | \
   sed "s~%%MONGOD_LOG_PATH%%~${!confsvr_repl_log_path}~g" | \
   sed "s~%%MONGOD_DB_PATH%%~${!confsvr_repl_db_path}~g" | \
   sed "s~%%MONGOD_HOST%%~${!confsvr_repl_host}~g" | \
   sed "s~%%MONGOD_PORT%%~${!confsvr_repl_port}~g" | \
-  sed "s~%%MONGOD_REPL_NAME%%~$CONFSVR_REPL_NAME~g" > target/confsvr/${!confsvr_repl_conf_file}
+  sed "s~%%MONGOD_REPL_NAME%%~$CONFSVR_REPL_NAME~g" | \
+  sed "s~%%MONGO_KEYFILE%%~${!confsvr_repl_path}/keyfile~g" | \
+  sed "s~%%MONGOD_PID%%~${!confsvr_repl_path}/mongod.pid~g" > target/confsvr/${!confsvr_repl_conf_file}
 
   rsync -aurv target/confsvr/${!confsvr_repl_conf_file} ${!confsvr_repl_ssh}:${!confsvr_repl_path}
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}"
+
+  rsync -aurv target/keyfile ${!confsvr_repl_ssh}:${!confsvr_repl_path}
+  ssh ${!confsvr_repl_ssh} "sudo chmod 400 ${!confsvr_repl_path}/keyfile"
+  ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}/keyfile"
 done
 
 
@@ -204,19 +222,29 @@ do
 
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_log_path%/*} && sudo touch ${!shard_repl_log_path}"
+    ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_db_path}"
 
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_log_path%/*} ${!shard_repl_log_path}"
+    ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_db_path}"
 
     cat template/mongod.conf | \
     sed "s~%%MONGOD_LOG_PATH%%~${!shard_repl_log_path}~g" | \
     sed "s~%%MONGOD_DB_PATH%%~${!shard_repl_db_path}~g" | \
     sed "s~%%MONGOD_HOST%%~${!shard_repl_host}~g" | \
     sed "s~%%MONGOD_PORT%%~${!shard_repl_port}~g" | \
-    sed "s~%%MONGOD_REPL_NAME%%~${!shard_repl_name}~g" > $shard_dir_local/${!shard_repl_conf_file}
+    sed "s~%%MONGOD_REPL_NAME%%~${!shard_repl_name}~g" | \
+    sed "s~%%MONGO_KEYFILE%%~${!shard_repl_path}/keyfile~g" | \
+    sed "s~%%MONGOD_PID%%~${!shard_repl_path}/mongod.pid~g" > $shard_dir_local/${!shard_repl_conf_file}
 
     rsync -aurv $shard_dir_local/${!shard_repl_conf_file} ${!shard_repl_ssh}:${!shard_repl_path}
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}"
+
+    rsync -aurv target/keyfile ${!shard_repl_ssh}:${!shard_repl_path}
+    ssh ${!shard_repl_ssh} "sudo chmod 400 ${!shard_repl_path}/keyfile"
+    ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}/keyfile"
   done
 done
+
+echo "Deploy files/folders completed."
 
