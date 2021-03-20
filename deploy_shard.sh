@@ -135,7 +135,10 @@ do
   ssh ${!mongos_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
   ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_path}"
+  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_path}/bin"
   ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_log_path%/*} && sudo touch ${!mongos_log_path}"
+
+  rsync -aurv bin/mongod bin/mongos bin/mongo ${!mongos_ssh}:${!mongos_path}/bin
 
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_path}"
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_log_path%/*} ${!mongos_log_path}"
@@ -169,8 +172,11 @@ do
   ssh ${!confsvr_repl_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_path}"
+  ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_path}/bin"
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_log_path%/*} && sudo touch ${!confsvr_repl_log_path}"
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_db_path}"
+
+  rsync -aurv bin/mongod bin/mongos bin/mongo ${!confsvr_repl_ssh}:${!confsvr_repl_path}/bin
 
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_log_path%/*} ${!confsvr_repl_log_path}"
@@ -221,8 +227,11 @@ do
     ssh ${!shard_repl_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_path}"
+    ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_path}/bin"
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_log_path%/*} && sudo touch ${!shard_repl_log_path}"
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_db_path}"
+
+    rsync -aurv bin/mongod bin/mongos bin/mongo ${!shard_repl_ssh}:${!shard_repl_path}/bin
 
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_log_path%/*} ${!shard_repl_log_path}"
