@@ -111,7 +111,9 @@ SHARD1_REPL2_DB_PATH=/data/mongodb/shard1/repl2
 SHARD1_REPL2_SSH=root@10.30.80.79
 
 ## Auth config
-ENABLE_AUTH=false ## true/false
+ENABLE_AUTH=true ## true/false
+ADMIN_USER=admin
+ADMIN_PASS=T3HzPUfPXymQRMxAWe8v
 
 ## Service config
 USER_MONGODB=mongodb
@@ -134,11 +136,13 @@ do
 
   ssh ${!mongos_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
-  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_path}"
-  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_path}/bin"
-  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_log_path%/*} && sudo touch ${!mongos_log_path}"
+  ssh ${!mongos_ssh} "sudo mkdir -p /etc/mongodb/bin"
+  rsync -aurv bin/mongod bin/mongos bin/mongo ${!mongos_ssh}:/tmp
+  ssh ${!mongos_ssh} "sudo rsync -aurv /tmp/mongod /tmp/mongos /tmp/mongo /etc/mongodb/bin"
+  ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB /etc/mongodb/bin"
 
-  rsync -aurv bin/mongod bin/mongos bin/mongo ${!mongos_ssh}:${!mongos_path}/bin
+  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_path}"
+  ssh ${!mongos_ssh} "sudo mkdir -p ${!mongos_log_path%/*} && sudo touch ${!mongos_log_path}"
 
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_path}"
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_log_path%/*} ${!mongos_log_path}"
@@ -149,9 +153,11 @@ do
   sed "s~%%MONGOS_PORT%%~${!mongos_port}~g" | \
   sed "s~%%CONFSVR_REPL_NAME%%~$CONFSVR_REPL_NAME~g" | \
   sed "s~%%CONFSVR_REPL_PRIMARY%%~$CONFSVR_REPL_PRIMARY~g" | \
+  sed "s~%%MONGO_KEYFILE%%~${!mongos_path}/keyfile~g" | \
   sed "s~%%MONGOS_PID%%~${!mongos_path}/mongos.pid~g" > target/mongos/${!mongos_conf_file}
 
-  rsync -aurv target/mongos/${!mongos_conf_file} ${!mongos_ssh}:${!mongos_path}
+  rsync -aurv target/mongos/${!mongos_conf_file} ${!mongos_ssh}:/tmp
+  ssh ${!mongos_ssh} "sudo rsync -aurv /tmp/${!mongos_conf_file} ${!mongos_path}"
   ssh ${!mongos_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!mongos_path}"
 done
 
@@ -171,12 +177,14 @@ do
 
   ssh ${!confsvr_repl_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
+  ssh ${!confsvr_repl_ssh} "sudo mkdir -p /etc/mongodb/bin"
+  rsync -aurv bin/mongod bin/mongos bin/mongo ${!confsvr_repl_ssh}:/tmp
+  ssh ${!confsvr_repl_ssh} "sudo rsync -aurv /tmp/mongod /tmp/mongos /tmp/mongo /etc/mongodb/bin"
+  ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB /etc/mongodb/bin"
+
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_path}"
-  ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_path}/bin"
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_log_path%/*} && sudo touch ${!confsvr_repl_log_path}"
   ssh ${!confsvr_repl_ssh} "sudo mkdir -p ${!confsvr_repl_db_path}"
-
-  rsync -aurv bin/mongod bin/mongos bin/mongo ${!confsvr_repl_ssh}:${!confsvr_repl_path}/bin
 
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_log_path%/*} ${!confsvr_repl_log_path}"
@@ -189,12 +197,15 @@ do
   sed "s~%%MONGOD_PORT%%~${!confsvr_repl_port}~g" | \
   sed "s~%%MONGOD_REPL_NAME%%~$CONFSVR_REPL_NAME~g" | \
   sed "s~%%MONGO_KEYFILE%%~${!confsvr_repl_path}/keyfile~g" | \
-  sed "s~%%MONGOD_PID%%~${!confsvr_repl_path}/mongod.pid~g" > target/confsvr/${!confsvr_repl_conf_file}
+  sed "s~%%MONGOD_PID%%~${!confsvr_repl_path}/mongod.pid~g" | \
+  sed "s~%%MONGOD_CLUSTER_ROLE%%~configsvr~g" > target/confsvr/${!confsvr_repl_conf_file}
 
-  rsync -aurv target/confsvr/${!confsvr_repl_conf_file} ${!confsvr_repl_ssh}:${!confsvr_repl_path}
+  rsync -aurv target/confsvr/${!confsvr_repl_conf_file} ${!confsvr_repl_ssh}:/tmp
+  ssh ${!confsvr_repl_ssh} "sudo rsync -aurv /tmp/${!confsvr_repl_conf_file} ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}"
 
-  rsync -aurv target/keyfile ${!confsvr_repl_ssh}:${!confsvr_repl_path}
+  rsync -aurv target/keyfile ${!confsvr_repl_ssh}:/tmp
+  ssh ${!confsvr_repl_ssh} "sudo rsync -aurv /tmp/keyfile ${!confsvr_repl_path}"
   ssh ${!confsvr_repl_ssh} "sudo chmod 400 ${!confsvr_repl_path}/keyfile"
   ssh ${!confsvr_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!confsvr_repl_path}/keyfile"
 done
@@ -226,12 +237,14 @@ do
 
     ssh ${!shard_repl_ssh} "sudo id -u $USER_MONGODB &>/dev/null || sudo useradd $USER_MONGODB"
 
+    ssh ${!shard_repl_ssh} "sudo mkdir -p /etc/mongodb/bin"
+    rsync -aurv bin/mongod bin/mongos bin/mongo ${!shard_repl_ssh}:/tmp
+    ssh ${!shard_repl_ssh} "sudo rsync -aurv /tmp/mongod /tmp/mongos /tmp/mongo /etc/mongodb/bin"
+    ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB /etc/mongodb/bin"
+
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_path}"
-    ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_path}/bin"
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_log_path%/*} && sudo touch ${!shard_repl_log_path}"
     ssh ${!shard_repl_ssh} "sudo mkdir -p ${!shard_repl_db_path}"
-
-    rsync -aurv bin/mongod bin/mongos bin/mongo ${!shard_repl_ssh}:${!shard_repl_path}/bin
 
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_log_path%/*} ${!shard_repl_log_path}"
@@ -244,12 +257,15 @@ do
     sed "s~%%MONGOD_PORT%%~${!shard_repl_port}~g" | \
     sed "s~%%MONGOD_REPL_NAME%%~${!shard_repl_name}~g" | \
     sed "s~%%MONGO_KEYFILE%%~${!shard_repl_path}/keyfile~g" | \
-    sed "s~%%MONGOD_PID%%~${!shard_repl_path}/mongod.pid~g" > $shard_dir_local/${!shard_repl_conf_file}
+    sed "s~%%MONGOD_PID%%~${!shard_repl_path}/mongod.pid~g" | \
+    sed "s~%%MONGOD_CLUSTER_ROLE%%~shardsvr~g" > $shard_dir_local/${!shard_repl_conf_file}
 
-    rsync -aurv $shard_dir_local/${!shard_repl_conf_file} ${!shard_repl_ssh}:${!shard_repl_path}
+    rsync -aurv $shard_dir_local/${!shard_repl_conf_file} ${!shard_repl_ssh}:/tmp
+    ssh ${!shard_repl_ssh} "sudo rsync -aurv /tmp/${!shard_repl_conf_file} ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}"
 
-    rsync -aurv target/keyfile ${!shard_repl_ssh}:${!shard_repl_path}
+    rsync -aurv target/keyfile ${!shard_repl_ssh}:/tmp
+    ssh ${!shard_repl_ssh} "sudo rsync -aurv /tmp/keyfile ${!shard_repl_path}"
     ssh ${!shard_repl_ssh} "sudo chmod 400 ${!shard_repl_path}/keyfile"
     ssh ${!shard_repl_ssh} "sudo chown -R $USER_MONGODB:$USER_MONGODB ${!shard_repl_path}/keyfile"
   done
